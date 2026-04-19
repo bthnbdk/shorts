@@ -27,7 +27,7 @@ async function startServer() {
       python: true,
       ffmpeg: true,
       ollama: true,
-      mflux: true,
+      diffusers: true,
       kokoro: true,
       whisper: true,
       librosa: true,

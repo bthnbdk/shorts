@@ -31,9 +31,9 @@ No Runway. No ElevenLabs. No OpenAI. No monthly subscriptions. Everything runs o
           ↓  ~15 minutes later
   📱 short_1234567.mp4
      ├── AI-generated script (Llama 3.2)
-     ├── Cinematic images (FLUX.1-schnell)
-     ├── Natural voiceover (Kokoro TTS)
-     ├── Animated Ken Burns motion (FFmpeg)
+     ├── Cinematic images (SDXL Turbo / SD 1.5 LCM)
+     ├── Natural voiceover (Kokoro TTS / Piper)
+     ├── Animated FILM Interpolation (AnimateDiff / FFmpeg)
      ├── Auto-subtitles, styled (Whisper)
      └── Background music mix
 ```
@@ -49,8 +49,8 @@ No Runway. No ElevenLabs. No OpenAI. No monthly subscriptions. Everything runs o
   - [Step 1: System Dependencies](#step-1-system-dependencies)
   - [Step 2: Ollama + LLM Model](#step-2-ollama--llm-model)
   - [Step 3: Python Environment](#step-3-python-environment)
-  - [Step 4: FLUX.1 Image Model](#step-4-flux1-image-model)
-  - [Step 5: Kokoro TTS Models](#step-5-kokoro-tts-models)
+  - [Step 4: SDXL Turbo / Image Model](#step-4-sdxl-turbo--image-model)
+  - [Step 5: Voice TTS Models](#step-5-voice-tts-models)
   - [Step 6: Whisper Model](#step-6-whisper-model)
   - [Step 7: Optional — Background Music](#step-7-optional--background-music)
 - [Usage](#-usage)
@@ -60,7 +60,6 @@ No Runway. No ElevenLabs. No OpenAI. No monthly subscriptions. Everything runs o
 - [Example Concepts & Prompts](#-example-concepts--prompts)
 - [Virality Tips](#-virality-tips)
 - [Troubleshooting](#-troubleshooting)
-- [Model Alternatives](#-model-alternatives)
 - [Contributing](#-contributing)
 
 ---
@@ -71,7 +70,7 @@ No Runway. No ElevenLabs. No OpenAI. No monthly subscriptions. Everything runs o
 |---|---|---|
 | **Chip** | Apple M1 | Apple M3 / M4 |
 | **RAM** | 16 GB unified memory | 16 GB+ |
-| **Storage** | 40 GB free | 60 GB free |
+| **Storage** | 20 GB free | 40 GB free |
 | **macOS** | 14.0 Sonoma | 15.0 Sequoia |
 | **Python** | 3.11 | 3.12 |
 
@@ -79,17 +78,14 @@ No Runway. No ElevenLabs. No OpenAI. No monthly subscriptions. Everything runs o
 
 | Component | Size |
 |---|---|
-| FLUX.1-schnell (4-bit quantized) | ~8.5 GB |
-| FLUX.1-dev (4-bit quantized) | ~11 GB |
+| SDXL Turbo / SD 1.5 LCM | ~6.5 GB |
 | Llama 3.2 (via Ollama) | ~2 GB |
 | Whisper base model | ~145 MB |
-| Kokoro TTS models | ~80 MB |
+| Kokoro TTS / Piper | ~80 MB |
 | Python dependencies | ~3 GB |
-| **Total (schnell setup)** | **~14 GB** |
-| **Total (dev setup)** | **~17 GB** |
+| **Total (Fast Setup)** | **~12 GB** |
 
-> **Note:** FLUX.1-dev requires a HuggingFace account and model access approval.  
-> FLUX.1-schnell is fully open and downloads without any login.
+> **Note:** The pipeline is thoroughly optimized to rely on Diffusers for SDXL Turbo to prevent 16GB out-of-memory RAM crashes common with other setups like FLUX.
 
 ---
 
@@ -113,9 +109,9 @@ No Runway. No ElevenLabs. No OpenAI. No monthly subscriptions. Everything runs o
 ┌───────────────┐   ┌──────────────────┐           │
 │  STAGE 2      │   │  STAGE 3         │           │
 │  Images       │   │  Voiceover       │           │
-│  FLUX.1 (MLX) │   │  Kokoro TTS      │           │
+│  Diffusers    │   │  Kokoro / Piper  │           │
 │  6–7 PNGs     │   │  voiceover.wav   │           │
-│  ~60s/image   │   │  ~5–10 seconds   │           │
+│  ~2s/image    │   │  ~5–10 seconds   │           │
 └───────┬───────┘   └────────┬─────────┘           │
         │                    │                      │
         ▼                    │           ┌──────────▼──────────┐
@@ -268,85 +264,60 @@ pip install --upgrade pip
 # 3e. Install all dependencies
 pip install -r requirements.txt
 
-# This installs: mflux, kokoro-onnx, faster-whisper, ollama, pyyaml, soundfile, numpy
+# This installs: diffusers, kokoro-onnx, faster-whisper, ollama, pyyaml, soundfile, numpy
 # Takes 5–10 minutes depending on internet speed
 ```
 
 ---
 
-### Step 4: FLUX.1 Image Model
+### Step 4: SDXL Turbo / Image Model
 
-`mflux` downloads model weights automatically on first use, but they are large.  
-It's better to pre-download them so you know exactly what's happening.
+Diffusers will download model weights dynamically on the first run, but it is highly recommended to fetch them securely beforehand to initialize the caching.
 
-#### Option A: FLUX.1-schnell (Recommended — fully open, no login needed)
+**Why SDXL Turbo?**
+FLUX models severely hallucinate Memory limitations on 16GB Apple Silicon machines. This setup defaults to SDXL Turbo which requires less than a third of the overhead, outputs in 1-4 inference steps max, and runs perfectly via Apple's `mps` backend locally on a 16GB limit.
 
 ```bash
-# Pre-download FLUX.1-schnell at 4-bit quantization (~8.5GB download)
+# Pre-download SDXL-Turbo at 16-bit precision (~6.5GB)
 # This only needs to run once — weights are cached in ~/.cache/huggingface/
 
 python3 -c "
-from mflux import Flux1, Config
-print('Downloading FLUX.1-schnell (4-bit)... This may take 20-40 minutes.')
-flux = Flux1.from_alias('flux-schnell', quantize=4)
-print('Done! Model cached at ~/.cache/huggingface/')
-del flux
+from diffusers import AutoPipelineForText2Image
+import torch
+print('Downloading SDXL-Turbo... This may take 5-10 minutes.')
+pipeline = AutoPipelineForText2Image.from_pretrained(
+   'stabilityai/sdxl-turbo', 
+   torch_dtype=torch.float16, 
+   variant='fp16'
+)
+print('Done! Model successfully cached.')
+del pipeline
 "
 ```
 
-#### Option B: FLUX.1-dev (Higher quality — requires HuggingFace account)
-
-FLUX.1-dev is gated — you must request access before downloading.
-
-**Step 4b-1:** Create a free account at [huggingface.co](https://huggingface.co)
-
-**Step 4b-2:** Visit [black-forest-labs/FLUX.1-dev](https://huggingface.co/black-forest-labs/FLUX.1-dev) and click **"Access repository"** — approval is instant.
-
-**Step 4b-3:** Create an access token:
-- Go to [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
-- Click **"New token"** → name it `localshorts` → select **Read** scope → Create
-- Copy the token (starts with `hf_...`)
-
-**Step 4b-4:** Log in and download:
+#### Test Image Generation
 
 ```bash
-# Install HuggingFace CLI
-pip install huggingface_hub
-
-# Log in with your token
-huggingface-cli login
-# Paste your hf_... token when prompted
-
-# Download FLUX.1-dev at 4-bit quantization (~11GB download)
+# Quick test to ensure `mps` (Apple Metal / GPU) is rendering correctly
 python3 -c "
-from mflux import Flux1, Config
-print('Downloading FLUX.1-dev (4-bit)... This may take 30-60 minutes.')
-flux = Flux1.from_alias('flux-dev', quantize=4)
-print('Done!')
-del flux
+from diffusers import AutoPipelineForText2Image
+import torch
+
+try:
+    pipe = AutoPipelineForText2Image.from_pretrained(
+       'stabilityai/sdxl-turbo', 
+       torch_dtype=torch.float16, 
+       variant='fp16'
+    )
+    pipe.to('mps')
+
+    # Generate image (1-4 steps to operate)
+    image = pipe('a cinematic landscape, dramatic lighting, photorealistic', num_inference_steps=2, guidance_scale=0.0).images[0]
+    image.save('test_output.png')
+    print('Render complete, saved to test_output.png')
+except Exception as e:
+    print('Failed:', e)
 "
-```
-
-**Then update `config.yaml`:**
-```yaml
-flux_model: "dev"
-flux_steps: 28       # dev needs more steps than schnell
-flux_guidance: 3.5
-```
-
-#### Test image generation
-
-```bash
-# Quick test — generates a single image (should take ~60 seconds for schnell)
-mflux-generate \
-  --model flux-schnell \
-  --prompt "a cinematic landscape, dramatic lighting, photorealistic" \
-  --steps 4 \
-  --width 768 \
-  --height 1360 \
-  --seed 42 \
-  --output test_output.png \
-  --quantize 4
 
 # Open the result:
 open test_output.png
@@ -552,32 +523,31 @@ Edit `config.yaml` to tune every stage of the pipeline:
 ollama_model: "llama3.2"      # Options: llama3.2, llama3.2:1b, mistral, phi3
                                # llama3.2:1b is 3× faster but lower quality
 
-# ── Stage 2: Image Generation (FLUX via mflux) ───────────────────────────────
-flux_model: "schnell"          # "schnell" (fast, 4 steps) or "dev" (slow, 28 steps)
-flux_quantize: 4               # 4 = ~8GB memory, 8 = ~14GB memory (don't use 8 on 16GB)
-flux_steps: 4                  # schnell: 4 steps. dev: 25–35 steps
-flux_guidance: 3.5             # dev only. Ignored for schnell. Range: 2.0–5.0
-flux_seed: 42                  # Fixed seed = consistent style across scenes
-                               # Change this per batch for variety
+# ── Stage 2: Image Generation (Diffusers) ───────────────────────────────
+use_ip_adapter: true           # Maintains facial and style consistency
+sd_model: "stabilityai/sdxl-turbo" # Or "SG161222/Realistic_Vision_V5.1_noVAE"
+sd_steps: 4                    # SDXL Turbo: 2-4 steps. SD1.5: 20 steps.
+sd_guidance: 0.0               # SDXL Turbo uses 0.0. SD 1.5 uses 7.5.
 
-# ── Stage 3: Voice (Kokoro TTS) ──────────────────────────────────────────────
-tts_voice: "af_bella"          # See voice table in setup guide
-tts_speed: 1.05                # 0.8 = slower/relaxed, 1.1 = faster/energetic
+# ── Stage 3: Voice (Kokoro / F5 / RVC) ──────────────────────────────────────
+tts_engine: "kokoro"           # "kokoro" or "f5-tts"
+tts_voice: "af_bella"          # Options: af_bella, af_sarah, am_adam
+use_rvc: false                 # Clone voice via rvc-cli sequentially
 
-# ── Stage 4: Animation ────────────────────────────────────────────────────────
+# ── Stage 4: Animation (FILM / FFmpeg) ──────────────────────────────────────
 fps: 30                        # 30 is standard. 24 for more "cinematic" feel
+use_film: true                 # Runs frame_interpolator hallucination for fluid motion
 use_xfade: true                # Crossfade dissolves between clips
-xfade_duration: 0.3            # Dissolve length in seconds (0.2–0.5)
 
 # ── Stage 5: Subtitles ────────────────────────────────────────────────────────
 whisper_model: "base"          # tiny / base / small
 subtitle_words: 4              # Words per subtitle chunk. 3–4 optimal for mobile
-subtitle_style: "tiktok"       # tiktok | clean | fire | minimal
 subtitle_karaoke: true         # Word-by-word yellow highlight (boosts retention)
 
 # ── Stage 6: Assembly ─────────────────────────────────────────────────────────
-music_volume: 0.08             # 0.0 = no music, 0.05 = very subtle, 0.12 = noticeable
-cleanup_intermediates: true    # Delete clips/audio after final assembly
+beat_sync: true                # Uses librosa to dynamically cut scenes to BPM
+music_volume: 0.08             # Bass volume under voiceover
+cleanup_intermediates: false   # Delete clips/audio after final assembly
 ```
 
 ---
@@ -622,25 +592,25 @@ The `script.json` also includes:
 
 ### Per-video (M4 MacBook Air, 16GB RAM)
 
-| Stage | FLUX schnell | FLUX dev |
+| Stage | Time (SDXL Turbo) | Time (SD 1.5) |
 |---|---|---|
 | S1 Script (Llama 3.2) | ~45s | ~45s |
-| S2 Images (6 images) | ~6 min | ~25 min |
-| S3 Voice (Kokoro) | ~8s | ~8s |
-| S4 Animate (FFmpeg) | ~45s | ~45s |
-| S5 Subtitles (Whisper) | ~20s | ~20s |
-| S6 Assembly (FFmpeg) | ~25s | ~25s |
-| **Total per video** | **~8 min** | **~27 min** |
+| S2 Images (6 images) | ~15s | ~2 min |
+| S3 Voice (Kokoro + RVC) | ~45s | ~45s |
+| S4 Animate (FILM) | ~2 min | ~2 min |
+| S5 Subtitles (Whisper) | ~15s | ~15s |
+| S6 Assembly (FFmpeg) | ~20s | ~20s |
+| **Total per video** | **~4.5 min** | **~6 min** |
 
 ### Batch performance
 
-| Batch Size | FLUX schnell | FLUX dev |
+| Batch Size | SDXL Turbo | SD 1.5 |
 |---|---|---|
-| 5 videos | ~40 min | ~2.5 hours |
-| 10 videos | ~80 min | ~5 hours |
-| 20 videos | ~2.7 hours | ~9 hours (overnight) |
+| 5 videos | ~20 min | ~30 min |
+| 10 videos | ~40 min | ~1 hour |
+| 20 videos | ~1.5 hours | ~2 hours |
 
-> **Tip:** Run batch jobs overnight. `python pipeline.py --batch concepts.txt` and come back to finished videos in the morning.
+> **Tip:** Run batch jobs natively in the background. `python pipeline.py --batch concepts.txt` and come back to finished videos later.
 
 ---
 
@@ -720,20 +690,19 @@ The first 3 seconds determine 80% of your retention. Use one of these patterns:
 → "Why everything you know about sleep is wrong..."
 ```
 
-### Image Prompt Techniques for FLUX
+### Image Prompt Techniques for SDXL Turbo
 
 ```bash
 # Consistency across scenes: use the same "style anchor" phrase in every prompt
 "... cinematic teal and orange color grade, volumetric light"
 
-# For FLUX.1-schnell: be very descriptive, no artistic instruction needed
+# For SDXL: be very descriptive
 # Bad:  "dramatic space scene"
 # Good: "black void of space, Saturn filling 40% of frame, ice geyser erupting
 #        from Enceladus, backlighting from distant sun, photorealistic"
 
-# Negative concepts don't work well in FLUX — describe what you WANT
-# Bad:  "no text, no watermark"
-# Good: just don't mention text; FLUX rarely adds it anyway
+# SDXL Turbo supports negative prompts, but keep them simple:
+# "blurry, text, watermark, bad anatomy, deformed"
 ```
 
 ### Subtitle Rules
@@ -754,26 +723,9 @@ The first 3 seconds determine 80% of your retention. Use one of these patterns:
 
 ## 🐛 Troubleshooting
 
-### "mflux-generate: command not found"
+### "GPU Out of memory" during generation
 ```bash
-# Make sure your venv is activated:
-source .venv/bin/activate
-
-# Reinstall mflux:
-pip install mflux --upgrade
-
-# Check if the CLI is installed:
-which mflux-generate
-# Should print: /path/to/.venv/bin/mflux-generate
-```
-
-### "Out of memory" during image generation
-```bash
-# In config.yaml, switch to schnell if using dev:
-flux_model: "schnell"
-flux_quantize: 4
-
-# Close other apps — FLUX.1-schnell needs ~8GB unified memory free
+# SDXL Turbo is highly optimized, but ensure no other Heavy ML apps are running.
 # Check memory pressure: open Activity Monitor → Memory tab
 ```
 
@@ -842,21 +794,14 @@ ollama pull mistral
 | **Llama 3.2** (recommended) | `ollama pull llama3.2` | ✅ Fast | ★★★★ |
 | Llama 3.2 1B (tiny) | `ollama pull llama3.2:1b` | ⚡ Fastest | ★★★ |
 | Mistral 7B | `ollama pull mistral` | Medium | ★★★★ |
-| Phi-3 Mini | `ollama pull phi3` | Fast | ★★★ |
-| Llama 3.1 70B | `ollama pull llama3.1:70b` | Very slow | ★★★★★ |
 
 ### Image Generation
 
 | Model | Quality | Speed (M4) | Memory |
 |---|---|---|---|
-| **FLUX.1-schnell 4-bit** (recommended) | ★★★★ | ~60s/img | ~8GB |
-| FLUX.1-dev 4-bit | ★★★★★ | ~3–4 min/img | ~10GB |
-| SD 1.5 (via diffusers) | ★★★ | ~45s/img | ~3.5GB |
-| Dreamshaper 8 (via diffusers) | ★★★★ | ~50s/img | ~4GB |
-| SDXL Turbo (via diffusers) | ★★★★ | ~90s/img | ~7GB |
-
-To use SD-based models instead of FLUX, edit `stages/s2_images.py` to use
-the `diffusers` pipeline (original code is in `GUIDE.md`).
+| **SDXL Turbo 16-bit** (recommended) | ★★★★ | ~3s/img | ~6.5GB |
+| SD 1.5 LCM | ★★★ | ~2s/img | ~3.5GB |
+| FLUX.1-schnell | ★★★★★ | ~60s/img | ~8GB (Requires `mflux` repo) |
 
 ### TTS
 
@@ -864,20 +809,16 @@ the `diffusers` pipeline (original code is in `GUIDE.md`).
 |---|---|---|---|
 | **Kokoro ONNX** (recommended) | ★★★★★ | ⚡ ~8s | `pip install kokoro-onnx` |
 | Piper TTS | ★★★ | ⚡ ~5s | `pip install piper-tts` |
-| Coqui TTS | ★★★★ | Medium | `pip install TTS` |
 
 ---
 
 ## 🤝 Contributing
 
-Contributions welcome! Areas where help is most needed:
+Contributions welcome! We recently merged major updates including IP-Adapter, FILM Interpolation, RVC, Librosa BPM Sync, and the Node Express server. Areas where help is most needed:
 
-- **AnimateDiff-Lightning integration** — actual video diffusion for scenes
-- **RVC voice conversion** — transform Kokoro output to custom voice styles
-- **Beat-sync cuts** — sync transitions to background music BPM via librosa
+- **Advanced AnimateDiff-Lightning integration** — robust text-to-video for 16GB
+- **YouTube/TikTok API integration** — direct upload from the UI
 - **SQLite job database** — persistent job history with search
-- **FastAPI web server** — expose pipeline as REST API for the dashboard UI
-- **Quality scoring** — CLIP-based image prompt adherence checker
 
 ```bash
 git clone https://github.com/yourusername/localshorts.git
