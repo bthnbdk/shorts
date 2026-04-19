@@ -592,15 +592,17 @@ The `script.json` also includes:
 
 ### Per-video (M4 MacBook Air, 16GB RAM)
 
-| Stage | Time (SDXL Turbo) | Time (SD 1.5) |
+*Note: Runtimes heavily depend on whether you use heavy Frame Interpolation (FILM).*
+
+| Stage | Time (SDXL Turbo - Simple Pan) | Time (SDXL Turbo + FILM) |
 |---|---|---|
-| S1 Script (Llama 3.2) | ~45s | ~45s |
-| S2 Images (6 images) | ~15s | ~2 min |
+| S1 Script (Llama/Gemma) | ~45s | ~45s |
+| S2 Images (6 images) | ~15s | ~15s |
 | S3 Voice (Kokoro + RVC) | ~45s | ~45s |
-| S4 Animate (FILM) | ~2 min | ~2 min |
+| S4 Animate | ~45s (FFmpeg Pan) | ~5-10 min (FILM) |
 | S5 Subtitles (Whisper) | ~15s | ~15s |
 | S6 Assembly (FFmpeg) | ~20s | ~20s |
-| **Total per video** | **~4.5 min** | **~6 min** |
+| **Total per video** | **~3-4 min** | **~8-13 min** |
 
 ### Batch performance
 

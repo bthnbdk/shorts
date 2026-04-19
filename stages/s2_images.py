@@ -68,6 +68,11 @@ def run(context):
         print(f"Generating image {i+1}/{len(script_data['scenes'])}")
         
         prompt = scene["image_prompt"]
+        if "style" in scene and scene["style"]:
+            prompt += f", {scene['style']}"
+        if "camera" in scene and scene["camera"]:
+            prompt += f", {scene['camera']}"
+            
         if "style_anchor" in config:
             prompt += f", {config['style_anchor']}"
             
@@ -99,5 +104,9 @@ def run(context):
         if use_ip_adapter and not is_turbo and reference_image is None:
             print("Using Scene 1 as IP-Adapter reference for subsequent scenes.")
             reference_image = image
+
+        # CRITICAL MEMORY CLEANUP for 16GB Apple Silicon
+        if device == "mps":
+            torch.mps.empty_cache()
 
     print("✅ Image generation complete.")
